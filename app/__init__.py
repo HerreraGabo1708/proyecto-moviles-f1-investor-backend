@@ -18,6 +18,10 @@ def create_app():
     bcrypt.init_app(app)
     CORS(app)
 
+    @app.route('/')
+    def home():
+        return {'message': 'Backend F1 Investor conectado correctamente'}
+
     from app.routes.usuarios    import usuarios_bp
     from app.routes.pilotos     import pilotos_bp
     from app.routes.equipos     import equipos_bp
