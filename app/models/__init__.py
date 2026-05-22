@@ -12,3 +12,5 @@ from app.models.mejora    import Mejora
 from app.models.neumatico import Neumatico
 from app.models.evento    import Evento
 from app.models.equipo_f2 import EquipoF2
+from app.models.market_history import MarketHistory
+from app.models.sync_log import SyncLog

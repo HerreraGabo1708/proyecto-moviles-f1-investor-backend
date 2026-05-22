@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -10,8 +11,9 @@ class Config:
 
     SQLALCHEMY_DATABASE_URI = os.getenv(
         'DATABASE_URL',
-        'mysql+pymysql://root:root@localhost/bd_f1_simulator'
+        'mysql+pymysql://root:@localhost/f1_investment_db'
     )
 
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    JWT_ACCESS_TOKEN_EXPIRES = 86400
+
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)
