@@ -152,6 +152,39 @@ def actualizar_perfil():
         'usuario': usuario.to_dict()
     }), 200
 
+@usuarios_bp.route('/recuperar-password', methods=['PATCH'])
+def recuperar_password():
+    data = request.get_json() or {}
+
+    correo = data.get('correo')
+    nuevo_password = data.get('nuevo_password')
+
+    if not correo or not nuevo_password:
+        return jsonify({
+            'error': 'Faltan campos requeridos: correo y nuevo_password'
+        }), 400
+
+    usuario = Usuario.query.filter_by(correo=correo).first()
+
+    if not usuario:
+        return jsonify({
+            'error': 'No existe una cuenta registrada con ese correo'
+        }), 404
+
+    if len(nuevo_password) < 8:
+        return jsonify({
+            'error': 'La nueva contraseña debe tener al menos 8 caracteres'
+        }), 400
+
+    usuario.password = bcrypt.generate_password_hash(
+        nuevo_password
+    ).decode('utf-8')
+
+    db.session.commit()
+
+    return jsonify({
+        'mensaje': 'Contraseña actualizada correctamente'
+    }), 200
 
 @usuarios_bp.route('/perfil/financiero', methods=['GET'])
 @jwt_required()
