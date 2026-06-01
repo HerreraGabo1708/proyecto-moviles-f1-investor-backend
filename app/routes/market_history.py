@@ -64,7 +64,12 @@ def historial_activo(tipo_activo, activo_id):
         MarketHistory.fecha.asc()
     ).limit(limite).all()
 
-    return jsonify([registro.to_dict() for registro in registros]), 200
+    return jsonify({
+        'tipo_activo': tipo_activo,
+        'activo_id': activo_id,
+        'total': len(registros),
+        'registros': [registro.to_dict() for registro in registros],
+    }), 200
 
 
 @market_history_bp.route('/grafico/<string:tipo_activo>/<int:activo_id>', methods=['GET'])
