@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from app import db
@@ -204,17 +204,26 @@ def resumen():
 @dashboard_bp.route('/mercado', methods=['GET'])
 @jwt_required()
 def resumen_mercado():
-    pilotos = Piloto.query.filter_by(
+    limite = request.args.get('limite', type=int)
+
+    pilotos_query = Piloto.query.filter_by(
         activo=True
     ).order_by(
         Piloto.valor_mercado.desc()
-    ).limit(10).all()
+    )
 
-    equipos = Equipo.query.filter_by(
+    equipos_query = Equipo.query.filter_by(
         activo=True
     ).order_by(
         Equipo.valor_mercado.desc()
-    ).limit(10).all()
+    )
+
+    if limite:
+        pilotos_query = pilotos_query.limit(limite)
+        equipos_query = equipos_query.limit(limite)
+
+    pilotos = pilotos_query.all()
+    equipos = equipos_query.all()
 
     return jsonify({
         'pilotos_top': [piloto.to_dict() for piloto in pilotos],

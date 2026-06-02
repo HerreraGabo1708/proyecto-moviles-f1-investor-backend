@@ -1,6 +1,12 @@
 """
 Servicio de mercado: actualiza el valor de pilotos y equipos
 despues de cada carrera, usando resultados simulados o importados desde Jolpica.
+
+Version ajustada para F1 Investor:
+- Mantiene la escala actual de valores del juego.
+- Evita saltos exagerados como pilotos a 1000 o equipos a 10000.
+- Registra historial de mercado.
+- Actualiza portfolios afectados.
 """
 
 from app import db
@@ -11,48 +17,63 @@ from app.models.portfolio import Portfolio
 from app.models.market_history import MarketHistory
 
 
-# Variacion base segun posicion final
+# ==========================================================
+# CONFIGURACION DE MERCADO
+# ==========================================================
+
+# Minimos acordes a la escala actual del juego.
+# Pilotos del script: aprox 5 - 115
+# Equipos del script: aprox 600 - 1200
+VALOR_MINIMO_PILOTO = 5.0
+VALOR_MINIMO_EQUIPO = 100.0
+
+# Variacion base segun posicion final.
+# Se bajan los porcentajes para evitar cambios exagerados.
 _VAR_POSICION = {
-    1:  0.12,
-    2:  0.08,
-    3:  0.06,
-    4:  0.04,
-    5:  0.03,
-    6:  0.02,
-    7:  0.01,
-    8:  0.00,
-    9: -0.01,
-    10: -0.02,
+    1: 0.08,
+    2: 0.05,
+    3: 0.04,
+    4: 0.03,
+    5: 0.02,
+    6: 0.015,
+    7: 0.01,
+    8: 0.005,
+    9: 0.0,
+    10: 0.0,
 }
 
 
 def _variacion_por_resultado(resultado: Resultado) -> float:
     """
-    Calcula la variacion porcentual del valor de mercado
-    segun posicion, puntos, posiciones ganadas/perdidas y estado final.
+    Calcula la variacion porcentual del valor de mercado segun:
+    - posicion final
+    - puntos obtenidos
+    - posiciones ganadas/perdidas, si existen
+    - estado final
     """
 
     if resultado.estado_final == "abandono":
-        return -0.08
+        return -0.06
 
     if resultado.estado_final == "dsq":
-        return -0.12
+        return -0.10
 
-    variacion = _VAR_POSICION.get(resultado.posicion, -0.03)
+    variacion = _VAR_POSICION.get(resultado.posicion, -0.01)
 
-    # Bonus pequeño por puntos
+    # Bonus pequeño por puntos.
+    # Antes podía aumentar demasiado si ya había un buen resultado.
     if resultado.puntos and resultado.puntos > 0:
-        variacion += min(resultado.puntos * 0.002, 0.04)
+        variacion += min(float(resultado.puntos) * 0.001, 0.025)
 
-    # Bonus o castigo por posiciones ganadas/perdidas
+    # Bonus o castigo por posiciones ganadas/perdidas.
     if resultado.posicion_salida is not None and resultado.posicion is not None:
         posiciones_ganadas = resultado.posicion_salida - resultado.posicion
 
         if posiciones_ganadas > 0:
-            variacion += min(posiciones_ganadas * 0.005, 0.04)
+            variacion += min(posiciones_ganadas * 0.003, 0.025)
 
         elif posiciones_ganadas < 0:
-            variacion += max(posiciones_ganadas * 0.004, -0.04)
+            variacion += max(posiciones_ganadas * 0.003, -0.025)
 
     return round(variacion, 4)
 
@@ -168,11 +189,10 @@ def actualizar_mercado(carrera) -> None:
             continue
 
         valor_anterior = piloto.valor_mercado or 0.0
-
         variacion = _variacion_por_resultado(resultado)
 
         nuevo_valor = max(
-            1_000.0,
+            VALOR_MINIMO_PILOTO,
             valor_anterior * (1 + variacion)
         )
 
@@ -181,10 +201,13 @@ def actualizar_mercado(carrera) -> None:
         # Ajuste simple de forma actual
         if resultado.estado_final == "abandono":
             piloto.forma_actual = max(0.0, piloto.forma_actual - 5.0)
+
         elif resultado.posicion <= 3:
             piloto.forma_actual = min(100.0, piloto.forma_actual + 4.0)
+
         elif resultado.posicion <= 10:
             piloto.forma_actual = min(100.0, piloto.forma_actual + 1.5)
+
         else:
             piloto.forma_actual = max(0.0, piloto.forma_actual - 1.0)
 
@@ -227,11 +250,12 @@ def actualizar_mercado(carrera) -> None:
 
         variacion_promedio = sum(variaciones) / len(variaciones)
 
-        # El equipo se mueve menos que el piloto individual
-        variacion_equipo = variacion_promedio * 0.5
+        # El equipo se mueve menos que el piloto individual.
+        # 0.35 evita que una sola carrera dispare demasiado el valor.
+        variacion_equipo = variacion_promedio * 0.35
 
         nuevo_valor = max(
-            10_000.0,
+            VALOR_MINIMO_EQUIPO,
             valor_anterior * (1 + variacion_equipo)
         )
 

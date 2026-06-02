@@ -5,6 +5,7 @@ from flask_jwt_extended import jwt_required
 
 from app import db
 from app.models.carrera import Carrera
+from app.models.temporada import Temporada
 from app.services.simulacion import simular_carrera
 
 carreras_bp = Blueprint('carreras', __name__)
@@ -69,7 +70,10 @@ def listar():
         query = query.filter_by(round_number=round_number)
 
     if orden == 'round':
-        query = query.order_by(Carrera.temporada_anio.desc(), Carrera.round_number.asc())
+        query = query.order_by(
+            Carrera.temporada_anio.desc(),
+            Carrera.round_number.asc()
+        )
     elif orden == 'nombre':
         query = query.order_by(Carrera.nombre_gp.asc())
     elif orden == 'estado':
@@ -87,7 +91,9 @@ def listar():
 def por_temporada(temporada_id):
     carreras = Carrera.query.filter_by(
         temporada_id=temporada_id
-    ).order_by(Carrera.round_number.asc()).all()
+    ).order_by(
+        Carrera.round_number.asc()
+    ).all()
 
     return jsonify([carrera.to_dict() for carrera in carreras]), 200
 
@@ -97,7 +103,9 @@ def por_temporada(temporada_id):
 def por_temporada_anio(temporada_anio):
     carreras = Carrera.query.filter_by(
         temporada_anio=temporada_anio
-    ).order_by(Carrera.round_number.asc()).all()
+    ).order_by(
+        Carrera.round_number.asc()
+    ).all()
 
     return jsonify([carrera.to_dict() for carrera in carreras]), 200
 
@@ -114,6 +122,51 @@ def detalle_por_jolpica_id(jolpica_id):
 
     return jsonify(carrera.to_dict()), 200
 
+@carreras_bp.route('/simular-siguiente', methods=['POST'])
+@jwt_required()
+def simular_siguiente():
+    data = request.get_json(silent=True) or {}
+
+    recalcular_mercado = data.get('recalcular_mercado', True)
+    limpiar_previos = data.get('limpiar_previos', True)
+
+    temporada = Temporada.query.filter_by(activa=True).first()
+
+    query = Carrera.query.filter_by(estado='pendiente')
+
+    if temporada:
+        query = query.filter_by(temporada_id=temporada.id)
+
+    carrera = query.order_by(
+        Carrera.round_number.asc(),
+        Carrera.fecha.asc()
+    ).first()
+
+    if not carrera:
+        return jsonify({
+            'mensaje': 'No hay carreras pendientes para simular'
+        }), 404
+
+    resultados = simular_carrera(
+        carrera=carrera,
+        recalcular_mercado=recalcular_mercado,
+        limpiar_previos=limpiar_previos
+    )
+
+    siguiente_carrera = Carrera.query.filter_by(
+        estado='pendiente',
+        temporada_id=carrera.temporada_id
+    ).order_by(
+        Carrera.round_number.asc(),
+        Carrera.fecha.asc()
+    ).first()
+
+    return jsonify({
+        'mensaje': 'Siguiente carrera simulada correctamente',
+        'carrera_simulada': carrera.to_dict(),
+        'siguiente_carrera': siguiente_carrera.to_dict() if siguiente_carrera else None,
+        'resultados': [resultado.to_dict() for resultado in resultados],
+    }), 200
 
 @carreras_bp.route('/<int:carrera_id>', methods=['GET'])
 @jwt_required()
@@ -121,7 +174,10 @@ def detalle(carrera_id):
     carrera = Carrera.query.get_or_404(carrera_id)
 
     data = carrera.to_dict()
-    data['resultados'] = [resultado.to_dict() for resultado in carrera.resultados]
+    data['resultados'] = [
+        resultado.to_dict()
+        for resultado in carrera.resultados
+    ]
 
     return jsonify(data), 200
 
@@ -257,6 +313,9 @@ def simular(carrera_id):
     }), 200
 
 
+
+
+
 @carreras_bp.route('/<int:carrera_id>/marcar-pendiente', methods=['PATCH'])
 @jwt_required()
 def marcar_pendiente(carrera_id):
@@ -295,4 +354,37 @@ def eliminar(carrera_id):
 
     return jsonify({
         'mensaje': 'Carrera eliminada correctamente'
+    }), 200
+
+@carreras_bp.route('/ultima-completada', methods=['GET'])
+@jwt_required()
+def ultima_completada():
+    temporada = Temporada.query.filter_by(activa=True).first()
+
+    query = Carrera.query.filter_by(estado='completada')
+
+    if temporada:
+        query = query.filter_by(temporada_id=temporada.id)
+
+    carrera = query.order_by(
+        Carrera.round_number.desc(),
+        Carrera.fecha.desc()
+    ).first()
+
+    if not carrera:
+        return jsonify({
+            'mensaje': 'No hay carreras completadas',
+            'carrera': None,
+            'resultados': []
+        }), 200
+
+    resultados = sorted(
+        carrera.resultados,
+        key=lambda resultado: resultado.posicion or 999
+    )
+
+    return jsonify({
+        'mensaje': 'Última carrera completada encontrada',
+        'carrera': carrera.to_dict(),
+        'resultados': [resultado.to_dict() for resultado in resultados],
     }), 200
